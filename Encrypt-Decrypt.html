@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Encrypt / Decrypt File (Web Crypto API)</title>
+</head>
+<body>
+    <h1>Encrypt / Decrypt a .txt File</h1>
+    
+    <input type="file" id="fileInput" accept=".txt"><br><br>
+    
+    <label for="key">Enter Key (Password):</label>
+    <input type="password" id="key" placeholder="Enter encryption/decryption key"><br><br>
+    
+    <button onclick="encryptFile()">Encrypt File</button>
+    <button onclick="decryptFile()">Decrypt File</button>
+    
+    <h2>Result:</h2>
+    <pre id="output"></pre>
+
+    <script>
+        let fileContent = "";
+
+        // Read the file content when uploaded
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                fileContent = e.target.result; // Reading content as binary
+            };
+
+            reader.readAsArrayBuffer(file); // Important to read as ArrayBuffer
+        });
+
+        // Generate a key from the password
+        async function generateKey(password, salt) {
+            const enc = new TextEncoder();
+            const keyMaterial = await window.crypto.subtle.importKey(
+                "raw",
+                enc.encode(password),
+                { name: "PBKDF2" },
+                false,
+                ["deriveKey"]
+            );
+            return window.crypto.subtle.deriveKey(
+                {
+                    name: "PBKDF2",
+                    salt: salt,
+                    iterations: 100000,
+                    hash: "SHA-256"
+                },
+                keyMaterial,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["encrypt", "decrypt"]
+            );
+        }
+
+        // Encrypt the file content
+        async function encryptFile() {
+            const password = document.getElementById('key').value;
+            if (!fileContent || !password) {
+                alert("Please upload a file and enter a key.");
+                return;
+            }
+
+            const salt = window.crypto.getRandomValues(new Uint8Array(16));
+            const iv = window.crypto.getRandomValues(new Uint8Array(12)); // Initialization vector for AES-GCM
+            const key = await generateKey(password, salt);
+
+            const enc = new TextEncoder();
+            const encryptedContent = await window.crypto.subtle.encrypt(
+                {
+                    name: "AES-GCM",
+                    iv: iv
+                },
+                key,
+                enc.encode(new TextDecoder().decode(fileContent)) // Ensure content is treated as text
+            );
+
+            // Concatenate salt, iv, and encrypted content into one Uint8Array for easy storage
+            const result = new Uint8Array(salt.length + iv.length + encryptedContent.byteLength);
+            result.set(salt);
+            result.set(iv, salt.length);
+            result.set(new Uint8Array(encryptedContent), salt.length + iv.length);
+
+            document.getElementById('output').textContent = "File encrypted successfully!";
+            downloadFile(result, 'encrypted.txt');
+        }
+
+        // Decrypt the file content
+        async function decryptFile() {
+            const password = document.getElementById('key').value;
+            if (!fileContent || !password) {
+                alert("Please upload a file and enter a key.");
+                return;
+            }
+
+            // Extract salt and IV from the beginning of the file content
+            const fileData = new Uint8Array(fileContent);
+            const salt = fileData.slice(0, 16);
+            const iv = fileData.slice(16, 28);
+            const encryptedContent = fileData.slice(28);
+
+            const key = await generateKey(password, salt);
+
+            try {
+                const decryptedContent = await window.crypto.subtle.decrypt(
+                    {
+                        name: "AES-GCM",
+                        iv: iv
+                    },
+                    key,
+                    encryptedContent
+                );
+
+                const dec = new TextDecoder();
+                const result = dec.decode(decryptedContent);
+                document.getElementById('output').textContent = result;
+                downloadFile(result, 'decrypted.txt');
+            } catch (e) {
+                console.error(e);
+                alert("Decryption failed. Check your key or file.");
+            }
+        }
+
+        // Function to download the result
+        function downloadFile(content, fileName) {
+            const element = document.createElement('a');
+            const file = new Blob([content], { type: 'text/plain' });
+            element.href = URL.createObjectURL(file);
+            element.download = fileName;
+            document.body.appendChild(element);
+            element.click();
+        }
+    </script>
+</body>
+</html>
