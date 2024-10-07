@@ -1,33 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Encrypt / Decrypt File (Web Crypto API)</title>
 </head>
+
 <body>
-    <h1>Encrypt / Decrypt a .txt File</h1>
-    
-    <input type="file" id="fileInput" accept=".txt"><br><br>
-    
+    <h1>Encrypt / Decrypt a File</h1>
+
+    <input type="file" id="fileInput" accept=".txt, .zip"><br><br>
+
     <label for="key">Enter Key (Password):</label>
-    <input type="password" id="key" placeholder="Enter encryption/decryption key"><br><br>
-    
+    <input id="key" placeholder="Enter encryption/decryption key"><br><br>
+
     <button onclick="encryptFile()">Encrypt File</button>
     <button onclick="decryptFile()">Decrypt File</button>
-    
+
     <h2>Result:</h2>
     <pre id="output"></pre>
 
     <script>
         let fileContent = "";
+        let fileName = ""; // To track original file name
 
         // Read the file content when uploaded
-        document.getElementById('fileInput').addEventListener('change', function(event) {
+        document.getElementById('fileInput').addEventListener('change', function (event) {
             const file = event.target.files[0];
+            fileName = file.name; // Save the file name
             const reader = new FileReader();
 
-            reader.onload = function(e) {
+            reader.onload = function (e) {
                 fileContent = e.target.result; // Reading content as binary
             };
 
@@ -70,14 +74,13 @@
             const iv = window.crypto.getRandomValues(new Uint8Array(12)); // Initialization vector for AES-GCM
             const key = await generateKey(password, salt);
 
-            const enc = new TextEncoder();
             const encryptedContent = await window.crypto.subtle.encrypt(
                 {
                     name: "AES-GCM",
                     iv: iv
                 },
                 key,
-                enc.encode(new TextDecoder().decode(fileContent)) // Ensure content is treated as text
+                fileContent // Content is already in ArrayBuffer format
             );
 
             // Concatenate salt, iv, and encrypted content into one Uint8Array for easy storage
@@ -87,7 +90,7 @@
             result.set(new Uint8Array(encryptedContent), salt.length + iv.length);
 
             document.getElementById('output').textContent = "File encrypted successfully!";
-            downloadFile(result, 'encrypted.txt');
+            downloadFile(result, 'encrypted_' + fileName); // Keep original extension
         }
 
         // Decrypt the file content
@@ -116,10 +119,8 @@
                     encryptedContent
                 );
 
-                const dec = new TextDecoder();
-                const result = dec.decode(decryptedContent);
-                document.getElementById('output').textContent = result;
-                downloadFile(result, 'decrypted.txt');
+                document.getElementById('output').textContent = "File decrypted successfully!";
+                downloadFile(new Uint8Array(decryptedContent), 'decrypted_' + fileName);
             } catch (e) {
                 console.error(e);
                 alert("Decryption failed. Check your key or file.");
@@ -129,7 +130,7 @@
         // Function to download the result
         function downloadFile(content, fileName) {
             const element = document.createElement('a');
-            const file = new Blob([content], { type: 'text/plain' });
+            const file = new Blob([content], { type: 'application/octet-stream' }); // Generic binary stream
             element.href = URL.createObjectURL(file);
             element.download = fileName;
             document.body.appendChild(element);
@@ -137,4 +138,5 @@
         }
     </script>
 </body>
+
 </html>
